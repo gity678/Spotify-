@@ -1,5 +1,5 @@
 {
-  "name": "mobile-music-app",
+  "name": "music-app-railway",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -7,6 +7,9 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "@distube/ytdl-core": "^4.13.5"
+    "@distube/ytdl-core": "latest"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
