@@ -1,4 +1,5 @@
 const express = require("express");
+const yts = require("yt-search");
 const app = express();
 
 const PORT = process.env.PORT || 3000;
@@ -10,157 +11,147 @@ app.get("/", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Spotify Clone | My Playlist</title>
+      <title>Music Search & Play</title>
       <style>
-        :root { --spotify-green: #1DB954; --bg-black: #121212; --card-grey: #181818; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-black); color: white; margin: 0; padding-bottom: 100px; }
-        
-        /* الهيدر */
-        .header { padding: 20px; background: linear-gradient(transparent, rgba(0,0,0,0.5)); }
-        
-        /* صندوق الإضافة */
-        .add-section { padding: 20px; background: var(--card-grey); margin: 15px; border-radius: 10px; }
+        :root { --spotify-green: #1DB954; --bg-black: #121212; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-black); color: white; margin: 0; padding-bottom: 120px; }
+        .container { padding: 20px; }
+        .search-box { background: #181818; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
         input { width: 100%; padding: 12px; border-radius: 25px; border: none; background: #333; color: white; margin-bottom: 10px; box-sizing: border-box; }
-        button.add-btn { background: var(--spotify-green); color: black; border: none; padding: 10px 25px; border-radius: 25px; font-weight: bold; width: 100%; }
+        button { cursor: pointer; border-radius: 25px; border: none; font-weight: bold; transition: 0.3s; }
+        .btn-search { background: var(--spotify-green); color: black; padding: 10px 20px; width: 100%; }
+        
+        .results-list, .playlist { margin-top: 20px; }
+        .item { display: flex; align-items: center; background: #1a1a1a; padding: 10px; margin-bottom: 8px; border-radius: 8px; cursor: pointer; }
+        .item img { width: 50px; height: 50px; border-radius: 5px; margin-left: 15px; }
+        .item-info { flex-grow: 1; text-align: right; }
+        .item-title { font-size: 14px; font-weight: bold; display: block; }
+        .btn-add { background: #333; color: #fff; padding: 5px 12px; font-size: 12px; }
 
-        /* قائمة الأغاني */
-        .playlist { padding: 10px; }
-        .song-item { display: flex; align-items: center; padding: 10px; margin-bottom: 5px; border-radius: 5px; transition: 0.3s; cursor: pointer; }
-        .song-item:hover { background: #282828; }
-        .song-item.active { color: var(--spotify-green); }
-        .song-info { flex-grow: 1; margin-right: 15px; }
-        .song-title { font-weight: bold; display: block; }
-        .song-id { font-size: 12px; color: #b3b3b3; }
-
-        /* مشغل الموسيقى السفلي */
-        .player-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #000; padding: 15px; border-top: 1px solid #282828; display: flex; flex-direction: column; align-items: center; }
-        #player-container { width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
-        .controls { display: flex; gap: 20px; align-items: center; }
-        .control-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; }
-        .play-pause { font-size: 40px; color: white; }
-        .now-playing { font-size: 14px; margin-bottom: 10px; color: var(--spotify-green); }
+        .player-bar { position: fixed; bottom: 0; width: 100%; background: #000; padding: 15px; border-top: 1px solid #282828; text-align: center; }
+        #yt-player { width: 1px; height: 1px; position: absolute; left: -1000px; }
+        .controls { display: flex; justify-content: center; gap: 30px; font-size: 30px; margin-top: 10px; }
       </style>
     </head>
     <body>
 
-      <div class="header">
-        <h1>مكتبتي الموسيقية</h1>
-      </div>
-
-      <div class="add-section">
-        <input type="text" id="songTitle" placeholder="اسم الأغنية (مثلاً: عمرو دياب - تملي معاك)">
-        <input type="text" id="songUrl" placeholder="رابط فيديو اليوتيوب">
-        <button class="add-btn" onclick="addNewSong()">إضافة إلى المكتبة</button>
-      </div>
-
-      <div class="playlist" id="playlist">
+      <div class="container">
+        <h2>استكشف الموسيقى 🔍</h2>
+        
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="ابحث عن أغنية أو فنان...">
+          <button class="btn-search" onclick="searchYoutube()">بحث في يوتيوب</button>
         </div>
 
-      <div id="player-container">
-        <div id="yt-player"></div>
+        <div id="status" style="font-size: 12px; color: #b3b3b3;"></div>
+
+        <div id="results" class="results-list">
+          </div>
+
+        <hr style="border: 0.5px solid #282828; margin: 30px 0;">
+        
+        <h3>قائمة التشغيل الخاصة بك 🎵</h3>
+        <div id="playlist" class="playlist"></div>
       </div>
 
+      <div id="yt-player"></div>
+
       <div class="player-bar">
-        <div class="now-playing" id="current-title">اختر أغنية للتشغيل</div>
+        <div id="current-song-name" style="color: var(--spotify-green); font-size: 14px;">لا يوجد شيء قيد التشغيل</div>
         <div class="controls">
-          <button class="control-btn" onclick="prevSong()">⏮</button>
-          <button class="control-btn play-pause" id="playBtn" onclick="togglePlay()">▶</button>
-          <button class="control-btn" onclick="nextSong()">⏭</button>
+          <span onclick="prevSong()">⏮</span>
+          <span id="playIcon" onclick="togglePlay()">▶</span>
+          <span onclick="nextSong()">⏭</span>
         </div>
       </div>
 
       <script src="https://www.youtube.com/iframe_api"></script>
       <script>
         let player;
-        let playlist = JSON.parse(localStorage.getItem('spotify_playlist')) || [];
+        let playlist = JSON.parse(localStorage.getItem('my_songs')) || [];
         let currentIndex = -1;
 
-        // تهيئة مشغل يوتيوب
         function onYouTubeIframeAPIReady() {
           player = new YT.Player('yt-player', {
-            height: '0',
-            width: '0',
-            events: {
-              'onStateChange': onPlayerStateChange
-            }
+            events: { 'onStateChange': (e) => { if(e.data === 0) nextSong(); } }
           });
         }
 
-        function onPlayerStateChange(event) {
-          if (event.data === YT.PlayerState.ENDED) {
-            nextSong();
+        async function searchYoutube() {
+          const query = document.getElementById('searchInput').value;
+          if(!query) return;
+          const status = document.getElementById('status');
+          const resultsDiv = document.getElementById('results');
+          
+          status.innerText = "⏳ جاري البحث...";
+          resultsDiv.innerHTML = "";
+
+          try {
+            const res = await fetch('/api/search?q=' + encodeURIComponent(query));
+            const data = await res.json();
+            
+            status.innerText = "أفضل النتائج لـ: " + query;
+            data.forEach(video => {
+              const div = document.createElement('div');
+              div.className = 'item';
+              div.innerHTML = \`
+                <img src="\${video.thumbnail}">
+                <div class="item-info">
+                  <span class="item-title">\${video.title}</span>
+                  <button class="btn-add" onclick="addToPlaylist('\${video.videoId}', '\${video.title.replace(/'/g, "")}')">➕ إضافة</button>
+                </div>
+              \`;
+              resultsDiv.appendChild(div);
+            });
+          } catch (e) {
+            status.innerText = "❌ فشل البحث";
           }
         }
 
-        function extractVideoID(url) {
-          let regExp = /(?:youtube\\.com\\/.*v=|youtu\\.be\\/)([^&?]+)/;
-          let match = url.match(regExp);
-          return match ? match[1] : null;
-        }
-
-        function addNewSong() {
-          const title = document.getElementById('songTitle').value;
-          const url = document.getElementById('songUrl').value;
-          const videoId = extractVideoID(url);
-
-          if (title && videoId) {
-            playlist.push({ title, videoId });
-            localStorage.setItem('spotify_playlist', JSON.stringify(playlist));
-            document.getElementById('songTitle').value = '';
-            document.getElementById('songUrl').value = '';
-            renderPlaylist();
-          } else {
-            alert("تأكد من كتابة الاسم ووضع رابط صحيح");
-          }
+        function addToPlaylist(id, title) {
+          playlist.push({ videoId: id, title: title });
+          localStorage.setItem('my_songs', JSON.stringify(playlist));
+          renderPlaylist();
+          if(currentIndex === -1) playSong(0);
         }
 
         function renderPlaylist() {
-          const listDiv = document.getElementById('playlist');
-          listDiv.innerHTML = '';
-          playlist.forEach((song, index) => {
+          const list = document.getElementById('playlist');
+          list.innerHTML = "";
+          playlist.forEach((song, i) => {
             const div = document.createElement('div');
-            div.className = \`song-item \${index === currentIndex ? 'active' : ''}\`;
-            div.onclick = () => playSong(index);
+            div.className = 'item';
+            div.style.borderRight = i === currentIndex ? "4px solid #1DB954" : "none";
             div.innerHTML = \`
-              <div class="song-info">
-                <span class="song-title">\${song.title}</span>
-                <span class="song-id">يوتيوب ID: \${song.videoId}</span>
+              <div class="item-info" onclick="playSong(\${i})">
+                <span class="item-title">\${song.title}</span>
               </div>
-              <span>\${index === currentIndex ? '🔊' : ''}</span>
+              <span onclick="removeFromPlaylist(\${i})">🗑️</span>
             \`;
-            listDiv.appendChild(div);
+            list.appendChild(div);
           });
         }
 
-        function playSong(index) {
-          if (index < 0 || index >= playlist.length) return;
-          currentIndex = index;
-          const song = playlist[index];
-          
-          player.loadVideoById(song.videoId);
-          document.getElementById('current-title').innerText = "جاري تشغيل: " + song.title;
-          document.getElementById('playBtn').innerText = "⏸";
+        function playSong(i) {
+          currentIndex = i;
+          player.loadVideoById(playlist[i].videoId);
+          document.getElementById('current-song-name').innerText = "🔊 " + playlist[i].title;
+          document.getElementById('playIcon').innerText = "⏸";
           renderPlaylist();
         }
 
         function togglePlay() {
-          if (!player) return;
           const state = player.getPlayerState();
-          if (state === YT.PlayerState.PLAYING) {
-            player.pauseVideo();
-            document.getElementById('playBtn').innerText = "▶";
-          } else {
-            player.playVideo();
-            document.getElementById('playBtn').innerText = "⏸";
-          }
+          if(state === 1) { player.pauseVideo(); document.getElementById('playIcon').innerText = "▶"; }
+          else { player.playVideo(); document.getElementById('playIcon').innerText = "⏸"; }
         }
 
-        function nextSong() {
-          if (currentIndex < playlist.length - 1) playSong(currentIndex + 1);
-        }
-
-        function prevSong() {
-          if (currentIndex > 0) playSong(currentIndex - 1);
+        function nextSong() { if(currentIndex < playlist.length - 1) playSong(currentIndex + 1); }
+        function prevSong() { if(currentIndex > 0) playSong(currentIndex - 1); }
+        function removeFromPlaylist(i) {
+            playlist.splice(i, 1);
+            localStorage.setItem('my_songs', JSON.stringify(playlist));
+            renderPlaylist();
         }
 
         window.onload = renderPlaylist;
@@ -170,4 +161,11 @@ app.get("/", (req, res) => {
   `);
 });
 
-app.listen(PORT, () => console.log("Server on " + PORT));
+// مسار البحث في السيرفر
+app.get("/api/search", async (req, res) => {
+  const query = req.query.q;
+  const results = await yts(query);
+  res.json(results.videos.slice(0, 5)); // إرجاع أول 5 نتائج
+});
+
+app.listen(PORT, () => console.log("Music Server Running..."));
