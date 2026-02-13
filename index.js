@@ -1,7 +1,32 @@
 const express = require("express");
+const ytdl = require("ytdl-core");
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+// دالة لتحميل الأغنية
+app.get("/download/:videoID", async (req, res) => {
+  try {
+    const videoID = req.params.videoID;
+    const videoUrl = `https://www.youtube.com/watch?v=${videoID}`;
+    
+    // الحصول على معلومات الفيديو
+    const info = await ytdl.getInfo(videoUrl);
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '');
+    
+    // تعيين headers للتحميل
+    res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
+    
+    // تحميل الصوت فقط
+    ytdl(videoUrl, {
+      filter: 'audioonly',
+      quality: 'highestaudio'
+    }).pipe(res);
+    
+  } catch (error) {
+    res.status(500).send("حدث خطأ في التحميل");
+  }
+});
 
 app.get("/", (req, res) => {
   res.send(`
@@ -39,8 +64,36 @@ app.get("/", (req, res) => {
         #playlist {
           margin-top: 20px;
         }
-        .song {
-          margin: 5px 0;
+        .song-item {
+          margin: 10px 0;
+          padding: 10px;
+          background-color: #222;
+          border-radius: 5px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .song-title {
+          cursor: pointer;
+          flex-grow: 1;
+          text-align: right;
+          padding-right: 10px;
+        }
+        .download-btn {
+          background-color: #4CAF50;
+          border: none;
+          color: white;
+          padding: 5px 10px;
+          border-radius: 3px;
+          cursor: pointer;
+          font-size: 12px;
+          text-decoration: none;
+        }
+        .download-btn:hover {
+          background-color: #45a049;
+        }
+        .current-song {
+          border-right: 3px solid red;
         }
       </style>
     </head>
@@ -95,6 +148,8 @@ app.get("/", (req, res) => {
             '<iframe src="https://www.youtube.com/embed/' + videoID +
             '?autoplay=1&controls=0&loop=1&modestbranding=1" ' +
             'allow="autoplay"></iframe>';
+          
+          renderPlaylist();
         }
 
         function nextSong() {
@@ -117,31 +172,60 @@ app.get("/", (req, res) => {
           if(currentIndex >= 0){
             savedSong = playlist[currentIndex];
             alert("تم حفظ الأغنية الحالية!");
+            renderPlaylist();
           } else {
             alert("لا توجد أغنية لتخزينها");
           }
         }
 
+        function downloadSong(videoID, event) {
+          event.stopPropagation(); // منع تشغيل الأغنية عند الضغط على زر التحميل
+          window.location.href = '/download/' + videoID;
+        }
+
         function renderPlaylist() {
           let container = document.getElementById("playlist");
           container.innerHTML = "";
+          
           playlist.forEach((videoID, idx) => {
             let div = document.createElement("div");
-            div.className = "song";
-            div.textContent = "أغنية " + (idx + 1) + (idx === currentIndex ? " ← تشغيل الآن" : "");
-            div.onclick = () => playSong(idx);
+            div.className = "song-item" + (idx === currentIndex ? " current-song" : "");
+            
+            // عنوان الأغنية
+            let titleSpan = document.createElement("span");
+            titleSpan.className = "song-title";
+            titleSpan.textContent = "أغنية " + (idx + 1) + (idx === currentIndex ? " (تشغيل الآن)" : "");
+            titleSpan.onclick = () => playSong(idx);
+            
+            // زر التحميل
+            let downloadBtn = document.createElement("button");
+            downloadBtn.className = "download-btn";
+            downloadBtn.textContent = "⬇️ تحميل";
+            downloadBtn.onclick = (e) => downloadSong(videoID, e);
+            
+            div.appendChild(titleSpan);
+            div.appendChild(downloadBtn);
             container.appendChild(div);
           });
 
           if(savedSong){
             let savedDiv = document.createElement("div");
-            savedDiv.style.marginTop = "10px";
-            savedDiv.style.color = "#0f0";
-            savedDiv.textContent = "الأغنية المحفوظة: اضغط هنا لتشغيلها";
+            savedDiv.style.marginTop = "20px";
+            savedDiv.style.padding = "10px";
+            savedDiv.style.backgroundColor = "#1a3a1a";
+            savedDiv.style.borderRadius = "5px";
+            savedDiv.style.cursor = "pointer";
+            
+            let savedText = document.createElement("span");
+            savedText.textContent = "💾 الأغنية المحفوظة - اضغط للتشغيل";
+            savedText.style.color = "#0f0";
+            
             savedDiv.onclick = () => {
               let index = playlist.indexOf(savedSong);
               if(index >= 0) playSong(index);
-            }
+            };
+            
+            savedDiv.appendChild(savedText);
             container.appendChild(savedDiv);
           }
         }
