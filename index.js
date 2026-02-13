@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 
+// Railway يعطي المنفذ عبر process.env.PORT
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
@@ -21,6 +22,7 @@ app.get("/", (req, res) => {
         input {
           width: 300px;
           padding: 10px;
+          margin-bottom: 10px;
         }
         button {
           padding: 10px 20px;
