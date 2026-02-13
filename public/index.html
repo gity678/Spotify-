@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Music Stream</title>
+    <style>
+        :root { --main-green: #1DB954; --bg-black: #121212; }
+        body { background-color: #000; color: white; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; }
+        .app-container { display: flex; flex-direction: column; height: 100vh; padding: 20px; box-sizing: border-box; }
+        .search-section { margin-top: 40px; }
+        input { width: 100%; padding: 15px; border-radius: 25px; border: none; background: #282828; color: white; font-size: 16px; outline: none; }
+        .play-card { background: var(--bg-black); border-radius: 15px; padding: 30px; margin-top: 30px; text-align: center; border: 1px solid #282828; }
+        .btn-play { background: var(--main-green); color: black; border: none; width: 60px; height: 60px; border-radius: 50%; font-size: 24px; cursor: pointer; margin-top: 20px; }
+        audio { width: 100%; margin-top: 20px; filter: invert(1); height: 40px; }
+        .status { color: var(--main-green); margin-top: 10px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header><h2>موسيقاي 🎧</h2></header>
+        <div class="search-section">
+            <input type="text" id="urlInput" placeholder="أدخل رابط اليوتيوب هنا...">
+        </div>
+        <div class="play-card">
+            <div id="status" class="status">جاهز للتشغيل</div>
+            <audio id="audioPlayer" controls></audio>
+        </div>
+        <button class="btn-play" onclick="loadMusic()">▶</button>
+    </div>
+
+    <script>
+        function loadMusic() {
+            const url = document.getElementById('urlInput').value;
+            const player = document.getElementById('audioPlayer');
+            const status = document.getElementById('status');
+            if(!url) return;
+            status.innerText = "جاري التحميل من السيرفر...";
+            player.src = `/stream?url=${encodeURIComponent(url)}`;
+            player.play();
+            player.onplaying = () => status.innerText = "مشغل الآن 🎶";
+        }
+    </script>
+</body>
+</html>
