@@ -1,142 +1,173 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const ytdl = require("@distube/ytdl-core");
 const app = express();
 
 const PORT = process.env.PORT || 3000;
-const musicFolder = path.join(__dirname, "downloads");
 
-if (!fs.existsSync(musicFolder)) {
-    fs.mkdirSync(musicFolder);
-}
-
-app.use("/music", express.static(musicFolder));
-
-// واجهة المستخدم (HTML)
 app.get("/", (req, res) => {
-    res.send(`
+  res.send(`
     <!DOCTYPE html>
     <html dir="rtl">
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Music Cloud Storage</title>
-        <style>
-            body { font-family: -apple-system, sans-serif; background: #000; color: #fff; padding: 20px; text-align: center; }
-            .card { background: #111; padding: 20px; border-radius: 15px; border: 1px solid #333; max-width: 400px; margin: auto; }
-            input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; box-sizing: border-box; }
-            button { width: 100%; padding: 12px; background: #ff0000; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-            button:disabled { background: #555; }
-            #status { margin: 15px 0; font-size: 14px; color: #aaa; }
-            .song-item { background: #1a1a1a; padding: 15px; margin: 10px 0; border-radius: 10px; text-align: right; }
-            audio { width: 100%; margin-top: 10px; filter: invert(1); }
-        </style>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Spotify Clone | My Playlist</title>
+      <style>
+        :root { --spotify-green: #1DB954; --bg-black: #121212; --card-grey: #181818; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-black); color: white; margin: 0; padding-bottom: 100px; }
+        
+        /* الهيدر */
+        .header { padding: 20px; background: linear-gradient(transparent, rgba(0,0,0,0.5)); }
+        
+        /* صندوق الإضافة */
+        .add-section { padding: 20px; background: var(--card-grey); margin: 15px; border-radius: 10px; }
+        input { width: 100%; padding: 12px; border-radius: 25px; border: none; background: #333; color: white; margin-bottom: 10px; box-sizing: border-box; }
+        button.add-btn { background: var(--spotify-green); color: black; border: none; padding: 10px 25px; border-radius: 25px; font-weight: bold; width: 100%; }
+
+        /* قائمة الأغاني */
+        .playlist { padding: 10px; }
+        .song-item { display: flex; align-items: center; padding: 10px; margin-bottom: 5px; border-radius: 5px; transition: 0.3s; cursor: pointer; }
+        .song-item:hover { background: #282828; }
+        .song-item.active { color: var(--spotify-green); }
+        .song-info { flex-grow: 1; margin-right: 15px; }
+        .song-title { font-weight: bold; display: block; }
+        .song-id { font-size: 12px; color: #b3b3b3; }
+
+        /* مشغل الموسيقى السفلي */
+        .player-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #000; padding: 15px; border-top: 1px solid #282828; display: flex; flex-direction: column; align-items: center; }
+        #player-container { width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+        .controls { display: flex; gap: 20px; align-items: center; }
+        .control-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; }
+        .play-pause { font-size: 40px; color: white; }
+        .now-playing { font-size: 14px; margin-bottom: 10px; color: var(--spotify-green); }
+      </style>
     </head>
     <body>
-        <div class="card">
-            <h3>تخزين سحابي للموسيقى ☁️</h3>
-            <input type="text" id="url" placeholder="ضع رابط يوتيوب هنا">
-            <button id="btn" onclick="download()">حفظ في السيرفر</button>
-            <div id="status">جاهز للتحميل</div>
+
+      <div class="header">
+        <h1>مكتبتي الموسيقية</h1>
+      </div>
+
+      <div class="add-section">
+        <input type="text" id="songTitle" placeholder="اسم الأغنية (مثلاً: عمرو دياب - تملي معاك)">
+        <input type="text" id="songUrl" placeholder="رابط فيديو اليوتيوب">
+        <button class="add-btn" onclick="addNewSong()">إضافة إلى المكتبة</button>
+      </div>
+
+      <div class="playlist" id="playlist">
         </div>
-        <div id="list" style="max-width:400px; margin: 20px auto;"></div>
 
-        <script>
-            async function download() {
-                const btn = document.getElementById('btn');
-                const status = document.getElementById('status');
-                const url = document.getElementById('url').value;
+      <div id="player-container">
+        <div id="yt-player"></div>
+      </div>
 
-                if(!url) return alert("أدخل الرابط!");
+      <div class="player-bar">
+        <div class="now-playing" id="current-title">اختر أغنية للتشغيل</div>
+        <div class="controls">
+          <button class="control-btn" onclick="prevSong()">⏮</button>
+          <button class="control-btn play-pause" id="playBtn" onclick="togglePlay()">▶</button>
+          <button class="control-btn" onclick="nextSong()">⏭</button>
+        </div>
+      </div>
 
-                btn.disabled = true;
-                status.innerText = "⏳ جاري تجاوز حماية يوتيوب والحفظ...";
+      <script src="https://www.youtube.com/iframe_api"></script>
+      <script>
+        let player;
+        let playlist = JSON.parse(localStorage.getItem('spotify_playlist')) || [];
+        let currentIndex = -1;
 
-                try {
-                    const res = await fetch('/save?url=' + encodeURIComponent(url));
-                    const data = await res.json();
-                    if(data.success) {
-                        status.innerText = "✅ تم الحفظ بنجاح!";
-                        loadList();
-                    } else {
-                        status.innerText = "❌ خطأ: " + data.error;
-                    }
-                } catch (e) {
-                    status.innerText = "❌ فشل الاتصال بالسيرفر";
-                } finally {
-                    btn.disabled = false;
-                }
+        // تهيئة مشغل يوتيوب
+        function onYouTubeIframeAPIReady() {
+          player = new YT.Player('yt-player', {
+            height: '0',
+            width: '0',
+            events: {
+              'onStateChange': onPlayerStateChange
             }
+          });
+        }
 
-            async function loadList() {
-                const res = await fetch('/list-songs');
-                const songs = await res.json();
-                const listDiv = document.getElementById('list');
-                listDiv.innerHTML = songs.map(s => \`
-                    <div class="song-item">
-                        <div style="font-size:14px; margin-bottom:5px;">\${s}</div>
-                        <audio controls src="/music/\${encodeURIComponent(s)}"></audio>
-                    </div>
-                \`).join('');
-            }
-            window.onload = loadList;
-        </script>
+        function onPlayerStateChange(event) {
+          if (event.data === YT.PlayerState.ENDED) {
+            nextSong();
+          }
+        }
+
+        function extractVideoID(url) {
+          let regExp = /(?:youtube\\.com\\/.*v=|youtu\\.be\\/)([^&?]+)/;
+          let match = url.match(regExp);
+          return match ? match[1] : null;
+        }
+
+        function addNewSong() {
+          const title = document.getElementById('songTitle').value;
+          const url = document.getElementById('songUrl').value;
+          const videoId = extractVideoID(url);
+
+          if (title && videoId) {
+            playlist.push({ title, videoId });
+            localStorage.setItem('spotify_playlist', JSON.stringify(playlist));
+            document.getElementById('songTitle').value = '';
+            document.getElementById('songUrl').value = '';
+            renderPlaylist();
+          } else {
+            alert("تأكد من كتابة الاسم ووضع رابط صحيح");
+          }
+        }
+
+        function renderPlaylist() {
+          const listDiv = document.getElementById('playlist');
+          listDiv.innerHTML = '';
+          playlist.forEach((song, index) => {
+            const div = document.createElement('div');
+            div.className = \`song-item \${index === currentIndex ? 'active' : ''}\`;
+            div.onclick = () => playSong(index);
+            div.innerHTML = \`
+              <div class="song-info">
+                <span class="song-title">\${song.title}</span>
+                <span class="song-id">يوتيوب ID: \${song.videoId}</span>
+              </div>
+              <span>\${index === currentIndex ? '🔊' : ''}</span>
+            \`;
+            listDiv.appendChild(div);
+          });
+        }
+
+        function playSong(index) {
+          if (index < 0 || index >= playlist.length) return;
+          currentIndex = index;
+          const song = playlist[index];
+          
+          player.loadVideoById(song.videoId);
+          document.getElementById('current-title').innerText = "جاري تشغيل: " + song.title;
+          document.getElementById('playBtn').innerText = "⏸";
+          renderPlaylist();
+        }
+
+        function togglePlay() {
+          if (!player) return;
+          const state = player.getPlayerState();
+          if (state === YT.PlayerState.PLAYING) {
+            player.pauseVideo();
+            document.getElementById('playBtn').innerText = "▶";
+          } else {
+            player.playVideo();
+            document.getElementById('playBtn').innerText = "⏸";
+          }
+        }
+
+        function nextSong() {
+          if (currentIndex < playlist.length - 1) playSong(currentIndex + 1);
+        }
+
+        function prevSong() {
+          if (currentIndex > 0) playSong(currentIndex - 1);
+        }
+
+        window.onload = renderPlaylist;
+      </script>
     </body>
     </html>
-    `);
-});
-
-// مسار الحفظ المطور
-app.get("/save", async (req, res) => {
-    const videoURL = req.query.url;
-    
-    if (!ytdl.validateURL(videoURL)) {
-        return res.json({ success: false, error: "رابط غير صالح" });
-    }
-
-    try {
-        const info = await ytdl.getInfo(videoURL, {
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-                    'Cookie': '' // يمكنك إضافة كوكيز هنا لاحقاً إذا استمر الحظر
-                }
-            }
-        });
-
-        const title = info.videoDetails.title.replace(/[^\w\s\u0600-\u06FF]/gi, '').substring(0, 40);
-        const fileName = `${title}.mp3`;
-        const filePath = path.join(musicFolder, fileName);
-
-        // تحميل الملف بجودة صوت فقط لتجنب حجم البيانات الكبير
-        const stream = ytdl(videoURL, { 
-            quality: 'highestaudio',
-            filter: 'audioonly'
-        });
-
-        const fileStream = fs.createWriteStream(filePath);
-        
-        stream.pipe(fileStream);
-
-        stream.on('error', (err) => {
-            console.error(err);
-            res.json({ success: false, error: "يوتيوب قطع الاتصال (حماية)" });
-        });
-
-        fileStream.on('finish', () => {
-            res.json({ success: true, fileName });
-        });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, error: "فشل الوصول للفيديو" });
-    }
-});
-
-app.get("/list-songs", (req, res) => {
-    const files = fs.readdirSync(musicFolder).filter(f => f.endsWith('.mp3'));
-    res.json(files);
+  `);
 });
 
 app.listen(PORT, () => console.log("Server on " + PORT));
