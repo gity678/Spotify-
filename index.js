@@ -1,7 +1,6 @@
 const express = require("express");
 const app = express();
 
-// Railway يعطي المنفذ عبر process.env.PORT
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
@@ -31,6 +30,11 @@ app.get("/", (req, res) => {
           border: none;
           cursor: pointer;
         }
+        #player iframe {
+          width: 0;
+          height: 0;
+          border: 0;
+        }
       </style>
     </head>
     <body>
@@ -54,9 +58,9 @@ app.get("/", (req, res) => {
 
           if(videoID){
             document.getElementById("player").innerHTML =
-              '<iframe width="0" height="0" ' +
-              'src="https://www.youtube.com/embed/' + videoID + '?autoplay=1" ' +
-              'frameborder="0" allow="autoplay"></iframe>';
+              '<iframe src="https://www.youtube.com/embed/' + videoID +
+              '?autoplay=1&controls=0&loop=1&modestbranding=1" ' +
+              'allow="autoplay"></iframe>';
           } else {
             alert("رابط غير صحيح");
           }
