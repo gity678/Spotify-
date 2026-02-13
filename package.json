@@ -1,11 +1,8 @@
 {
-  "name": "music-player",
+  "name": "your-app-name",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.0",
+    "ytdl-core": "^4.11.0"
   }
 }
