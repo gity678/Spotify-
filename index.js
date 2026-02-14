@@ -3,6 +3,9 @@ const yts = require("yt-search");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 const app = express();
 
 const PORT = process.env.PORT || 3000;
@@ -31,7 +34,7 @@ app.get("/", (req, res) => {
         .btn-search { background: var(--green); width: 100%; }
         
         .item { display: flex; align-items: center; background: #252525; padding: 10px; margin: 8px 0; border-radius: 8px; }
-        .item-info { flex: 1; margin-right: 10px; font-size: 14px; }
+        .item-info { flex: 1; margin-right: 10px; font-size: 14px; cursor: pointer; }
         .btn-save { background: #007bff; color: white; padding: 5px 10px; font-size: 11px; margin-left: 5px; }
         .btn-download { background: #28a745; color: white; padding: 5px 10px; font-size: 11px; border-radius: 4px; text-decoration: none; margin-left: 5px; }
 
@@ -40,6 +43,7 @@ app.get("/", (req, res) => {
         .offline-badge { font-size: 10px; background: var(--green); color: black; padding: 2px 5px; border-radius: 4px; margin-right: 5px; }
         
         .item-actions { display: flex; gap: 5px; }
+        .loading { opacity: 0.5; pointer-events: none; }
       </style>
     </head>
     <body>
@@ -71,21 +75,34 @@ app.get("/", (req, res) => {
           const resDiv = document.getElementById('results');
           document.getElementById('status').innerText = "⏳ جاري البحث...";
           
-          const res = await fetch('/api/search?q=' + encodeURIComponent(q));
-          const videos = await res.json();
-          
-          resDiv.innerHTML = videos.map(v => \`
-            <div class="item">
-              <div class="item-info">\${v.title}</div>
-              <div class="item-actions">
-                <button class="btn-save" onclick="saveToServer('\${v.videoId}', '\${v.title.replace(/'/g,"")}')">📥 حفظ</button>
+          try {
+            const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+            const videos = await res.json();
+            
+            if(videos.length === 0) {
+              document.getElementById('status').innerText = "❌ لا توجد نتائج";
+              return;
+            }
+            
+            resDiv.innerHTML = videos.map(v => \`
+              <div class="item">
+                <div class="item-info">\${v.title}</div>
+                <div class="item-actions">
+                  <button class="btn-save" onclick="saveToServer('\${v.videoId}', '\${v.title.replace(/'/g, "\\\\'")}')">📥 حفظ</button>
+                </div>
               </div>
-            </div>
-          \`).join('');
-          document.getElementById('status').innerText = "";
+            \`).join('');
+            document.getElementById('status').innerText = "";
+          } catch(e) {
+            document.getElementById('status').innerText = "❌ خطأ في البحث";
+          }
         }
 
         async function saveToServer(id, title) {
+          const btn = event.target;
+          btn.disabled = true;
+          btn.innerText = "⏳ جاري...";
+          
           document.getElementById('status').innerText = "⏳ جاري التحميل والحفظ للسيرفر... يرجى الانتظار";
           try {
             const res = await fetch(\`/api/download?id=\${id}&title=\${encodeURIComponent(title)}\`);
@@ -94,32 +111,46 @@ app.get("/", (req, res) => {
               document.getElementById('status').innerText = "✅ تم الحفظ بنجاح!";
               loadOfflineFiles();
             } else {
-              alert("فشل التحميل: " + data.error);
+              document.getElementById('status').innerText = "❌ فشل التحميل: " + data.error;
             }
-          } catch(e) { alert("خطأ في الاتصال"); }
+          } catch(e) { 
+            document.getElementById('status').innerText = "❌ خطأ في الاتصال";
+          }
+          btn.disabled = false;
+          btn.innerText = "📥 حفظ";
         }
 
         async function loadOfflineFiles() {
-          const res = await fetch('/api/list');
-          const files = await res.json();
-          const listDiv = document.getElementById('my-list');
-          listDiv.innerHTML = files.map(f => \`
-            <div class="item">
-              <div class="item-info" onclick="playOffline('\${f}')">
-                <span class="offline-badge">OFFLINE</span> \${f}
+          try {
+            const res = await fetch('/api/list');
+            const files = await res.json();
+            const listDiv = document.getElementById('my-list');
+            
+            if(files.length === 0) {
+              listDiv.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">لا توجد أغاني محفوظة</div>';
+              return;
+            }
+            
+            listDiv.innerHTML = files.map(f => \`
+              <div class="item">
+                <div class="item-info" onclick="playOffline('\${f}')">
+                  <span class="offline-badge">OFFLINE</span> \${f.replace('.mp3', '')}
+                </div>
+                <div class="item-actions">
+                  <a href="/offline-music/\${encodeURIComponent(f)}" download="\${f}" class="btn-download">⬇️ تحميل</a>
+                  <span onclick="playOffline('\${f}')" style="cursor: pointer;">▶️</span>
+                </div>
               </div>
-              <div class="item-actions">
-                <a href="/offline-music/\${encodeURIComponent(f)}" download="\${f}" class="btn-download">⬇️ تحميل</a>
-                <span onclick="playOffline('\${f}')" style="cursor: pointer;">▶️</span>
-              </div>
-            </div>
-          \`).join('');
+            \`).join('');
+          } catch(e) {
+            console.log("خطأ في تحميل القائمة");
+          }
         }
 
         function playOffline(file) {
           const player = document.getElementById('main-player');
           player.src = "/offline-music/" + encodeURIComponent(file);
-          document.getElementById('now-playing').innerText = "🔊 " + file;
+          document.getElementById('now-playing').innerText = "🔊 " + file.replace('.mp3', '');
         }
 
         window.onload = loadOfflineFiles;
@@ -131,40 +162,92 @@ app.get("/", (req, res) => {
 
 // البحث
 app.get("/api/search", async (req, res) => {
-  const r = await yts(req.query.q);
-  res.json(r.videos.slice(0, 5));
-});
-
-// التحميل والحفظ للسيرفر
-app.get("/api/download", async (req, res) => {
-  const { id, title } = req.query;
-  const fileName = `${title.replace(/[^\w\s\u0600-\u06FF]/gi, '')}.mp3`;
-  const filePath = path.join(musicFolder, fileName);
-
   try {
-    // محاولة التحميل من مصدر بديل
-    const downloadUrl = `https://api.vevioz.com/api/button/mp3/${id}`;
-    
-    const response = await axios({
-      method: 'get',
-      url: downloadUrl,
-      responseType: 'stream'
-    });
-
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    writer.on('finish', () => res.json({ success: true }));
-    writer.on('error', (err) => res.json({ success: false, error: err.message }));
-
-  } catch (err) {
-    res.json({ success: false, error: "يوتيوب يمنع التحميل المباشر حالياً" });
+    const r = await yts(req.query.q);
+    res.json(r.videos.slice(0, 5));
+  } catch (e) {
+    res.json([]);
   }
 });
 
-app.get("/api/list", (req, res) => {
-  const files = fs.readdirSync(musicFolder).filter(f => f.endsWith('.mp3'));
-  res.json(files);
+// التحميل والحفظ للسيرفر - طرق متعددة
+app.get("/api/download", async (req, res) => {
+  const { id, title } = req.query;
+  const safeTitle = title.replace(/[^\w\s\u0600-\u06FF]/gi, '').substring(0, 50);
+  const fileName = `${safeTitle}.mp3`;
+  const filePath = path.join(musicFolder, fileName);
+
+  // لو الملف موجود مسبقاً
+  if (fs.existsSync(filePath)) {
+    return res.json({ success: true, message: "الملف موجود مسبقاً" });
+  }
+
+  // قائمة بمصادر التحميل (للتجربة)
+  const downloadSources = [
+    `https://api.vevioz.com/api/button/mp3/${id}`,
+    `https://p.oceansaver.in/ajax/download.php?format=mp3&url=https://www.youtube.com/watch?v=${id}`,
+    `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${id}&f=mp3`
+  ];
+
+  // تجربة كل مصدر
+  for (const source of downloadSources) {
+    try {
+      console.log(`محاولة التحميل من: ${source}`);
+      
+      const response = await axios({
+        method: 'get',
+        url: source,
+        responseType: 'stream',
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      // التحقق من أن المحتوى هو ملف صوتي
+      const contentType = response.headers['content-type'];
+      if (contentType && (contentType.includes('audio') || contentType.includes('octet-stream'))) {
+        const writer = fs.createWriteStream(filePath);
+        
+        await new Promise((resolve, reject) => {
+          response.data.pipe(writer);
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+
+        // التحقق من حجم الملف
+        const stats = fs.statSync(filePath);
+        if (stats.size > 10000) { // أكبر من 10KB
+          console.log(`✅ تم التحميل بنجاح من ${source}`);
+          return res.json({ success: true });
+        } else {
+          fs.unlinkSync(filePath); // حذف الملف الصغير جداً
+        }
+      }
+    } catch (e) {
+      console.log(`❌ فشل التحميل من ${source}: ${e.message}`);
+      // استمر في تجربة المصادر الأخرى
+    }
+  }
+
+  // إذا فشلت جميع المحاولات
+  res.json({ success: false, error: "تعذر تحميل الأغنية من جميع المصادر" });
 });
 
-app.listen(PORT, () => console.log("Offline Music Server Running..."));
+app.get("/api/list", (req, res) => {
+  try {
+    const files = fs.readdirSync(musicFolder)
+      .filter(f => f.endsWith('.mp3'))
+      .sort((a, b) => {
+        // ترتيب حسب تاريخ التعديل (الأحدث أولاً)
+        const statA = fs.statSync(path.join(musicFolder, a));
+        const statB = fs.statSync(path.join(musicFolder, b));
+        return statB.mtimeMs - statA.mtimeMs;
+      });
+    res.json(files);
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+app.listen(PORT, () => console.log("✅ Offline Music Server Running on port", PORT));
