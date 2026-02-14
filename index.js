@@ -32,11 +32,14 @@ app.get("/", (req, res) => {
         
         .item { display: flex; align-items: center; background: #252525; padding: 10px; margin: 8px 0; border-radius: 8px; }
         .item-info { flex: 1; margin-right: 10px; font-size: 14px; }
-        .btn-save { background: #007bff; color: white; padding: 5px 10px; font-size: 11px; }
+        .btn-save { background: #007bff; color: white; padding: 5px 10px; font-size: 11px; margin-left: 5px; }
+        .btn-download { background: #28a745; color: white; padding: 5px 10px; font-size: 11px; border-radius: 4px; text-decoration: none; margin-left: 5px; }
 
         .player-bar { position: fixed; bottom: 0; width: 100%; background: #000; padding: 15px; border-top: 1px solid #333; text-align: center; }
         audio { width: 100%; height: 35px; margin-top: 10px; }
         .offline-badge { font-size: 10px; background: var(--green); color: black; padding: 2px 5px; border-radius: 4px; margin-right: 5px; }
+        
+        .item-actions { display: flex; gap: 5px; }
       </style>
     </head>
     <body>
@@ -74,7 +77,9 @@ app.get("/", (req, res) => {
           resDiv.innerHTML = videos.map(v => \`
             <div class="item">
               <div class="item-info">\${v.title}</div>
-              <button class="btn-save" onclick="saveToServer('\${v.videoId}', '\${v.title.replace(/'/g,"")}')">📥 حفظ للسيرفر</button>
+              <div class="item-actions">
+                <button class="btn-save" onclick="saveToServer('\${v.videoId}', '\${v.title.replace(/'/g,"")}')">📥 حفظ</button>
+              </div>
             </div>
           \`).join('');
           document.getElementById('status').innerText = "";
@@ -99,9 +104,14 @@ app.get("/", (req, res) => {
           const files = await res.json();
           const listDiv = document.getElementById('my-list');
           listDiv.innerHTML = files.map(f => \`
-            <div class="item" onclick="playOffline('\${f}')">
-              <div class="item-info"><span class="offline-badge">OFFLINE</span> \${f}</div>
-              <span>▶️</span>
+            <div class="item">
+              <div class="item-info" onclick="playOffline('\${f}')">
+                <span class="offline-badge">OFFLINE</span> \${f}
+              </div>
+              <div class="item-actions">
+                <a href="/offline-music/\${encodeURIComponent(f)}" download="\${f}" class="btn-download">⬇️ تحميل</a>
+                <span onclick="playOffline('\${f}')" style="cursor: pointer;">▶️</span>
+              </div>
             </div>
           \`).join('');
         }
@@ -125,25 +135,19 @@ app.get("/api/search", async (req, res) => {
   res.json(r.videos.slice(0, 5));
 });
 
-// التحميل والحفظ للسيرفر (الخطة البديلة المستقرة)
+// التحميل والحفظ للسيرفر
 app.get("/api/download", async (req, res) => {
   const { id, title } = req.query;
   const fileName = `${title.replace(/[^\w\s\u0600-\u06FF]/gi, '')}.mp3`;
   const filePath = path.join(musicFolder, fileName);
 
   try {
-    // نستخدم محرك تحميل وسيط لتحويل الفيديو إلى MP3
-    // ملحوظة: هذه الخدمة مجانية للتحويل
+    // محاولة التحميل من مصدر بديل
     const downloadUrl = `https://api.vevioz.com/api/button/mp3/${id}`;
     
-    // ملاحظة: في بيئة الإنتاج يفضل استخدام مكتبة تحويل خاصة
-    // لكن للسهولة سنقوم بمحاكاة التحميل أو توجيه السيرفر لجلب الملف
-    // نظراً لصعوبة التحميل المباشر من يوتيوب على Railway حالياً
-    
-    // سنرسل استجابة بالنجاح إذا وجدنا طريقة للحفظ، هنا مثال لجلب الملف:
     const response = await axios({
       method: 'get',
-      url: `https://api.mp3.sh/download/${id}`, // مثال لمحرك تحويل
+      url: downloadUrl,
       responseType: 'stream'
     });
 
